@@ -12,7 +12,7 @@
 10. Total ether collected is paid to the winner automatically upon winner selection.
 
 Creator workflow:
-![Screenshot from 2022-03-29 10-15-26](https://user-images.githubusercontent.com/50282671/160526270-4d868575-d146-4bbf-bbb2-9f783402dedf.png)
+![Screenshot from 2022-03-29 13-59-02](https://user-images.githubusercontent.com/50282671/160552168-c1b4fa4f-7b9c-49ce-884c-98a46a10f5f2.png)
 
 Participant workflow:
 ![Screenshot from 2022-03-29 10-15-44](https://user-images.githubusercontent.com/50282671/160526329-2856af9e-5447-4cd2-ad46-9e9fe4fea552.png)
