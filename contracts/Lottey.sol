@@ -3,13 +3,13 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
-import "./VRFv2SubscriptionManager.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/LinkTokenInterface.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
-contract Lottery is OwnableUpgradeable {
+contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
     using CountersUpgradeable for CountersUpgradeable.Counter;
     CountersUpgradeable.Counter private _userId;
-    VRFv2SubscriptionManager public vrfV2SubscriptionManager;
-
     enum LotteryStatus {
         CLOSED,
         CALCULATING,
@@ -37,18 +37,56 @@ contract Lottery is OwnableUpgradeable {
     event RequestRandomness(uint256 _requestId);
     event RewardWiner(address _winner, uint256 _totalReward);
 
+    //Config Chainlink VRFv2SubscriptionManager
+    VRFCoordinatorV2Interface COORDINATOR;
+    LinkTokenInterface LINKTOKEN;
+
+    address constant vrfCoordinator =
+        0x6168499c0cFfCaCD319c818142124B7A15E857ab;
+    address constant link_token_contract =
+        0x01BE23585060835E02B77ef475b0Cc51aA1e0709;
+    bytes32 constant keyHash =
+        0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc;
+    uint32 constant callbackGasLimit = 100000;
+    uint16 constant requestConfirmations = 3;
+    uint32 constant numWords = 1;
+
+    // Storage parameters
+    uint256 public s_randomWords;
+    uint256 public s_requestId;
+    uint64 public s_subscriptionId;
+
     function initialize(
         uint256 _incentivePoint,
         uint256 _minimumFee,
-        uint256 _maxEntries,
-        address _vrfV2SubscriptionManager
+        uint256 _maxEntries
     ) public initializer {
         __Ownable_init();
+        VRFConsumerBaseV2(vrfCoordinator);
         incentivePoint = _incentivePoint;
         minimumFee = _minimumFee;
         maxEntries = _maxEntries;
-        vrfV2SubscriptionManager = VRFv2SubscriptionManager(
-            _vrfV2SubscriptionManager
+        COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
+        LINKTOKEN = LinkTokenInterface(link_token_contract);
+        createNewSubscription();
+    }
+
+    function createNewSubscription() private onlyOwner {
+        // Create a subscription with a new subscription ID.
+        address[] memory consumers = new address[](1);
+        consumers[0] = address(this);
+        s_subscriptionId = COORDINATOR.createSubscription();
+        // Add this contract as a consumer of its own subscription.
+        COORDINATOR.addConsumer(s_subscriptionId, consumers[0]);
+    }
+
+    // Assumes this contract owns link.
+    // 1000000000000000000 = 1 LINK
+    function topUpSubscription(uint256 amount) external {
+        LINKTOKEN.transferAndCall(
+            address(COORDINATOR),
+            amount,
+            abi.encode(s_subscriptionId)
         );
     }
 
@@ -100,8 +138,21 @@ contract Lottery is OwnableUpgradeable {
         );
 
         lotteryStatus = LotteryStatus.CALCULATING;
-        uint256 requestId = vrfV2SubscriptionManager.requestRandomWords();
-        emit RequestRandomness(requestId);
+        s_requestId = COORDINATOR.requestRandomWords(
+            keyHash,
+            s_subscriptionId,
+            requestConfirmations,
+            callbackGasLimit,
+            numWords
+        );
+        emit RequestRandomness(s_requestId);
+    }
+
+    function fulfillRandomWords(
+        uint256, /* requestId */
+        uint256 randomWords
+    ) internal {
+        s_randomWords = randomWords;
     }
 
     function transfer(address _to, uint256 _amount) internal {
@@ -110,13 +161,9 @@ contract Lottery is OwnableUpgradeable {
     }
 
     function endLottery() external onlyOwner {
-        require(
-            vrfV2SubscriptionManager.s_randomWords(0) > 0,
-            "The lottery is processing"
-        );
+        require(s_randomWords > 0, "The lottery is processing");
 
-        uint256 winnerId = vrfV2SubscriptionManager.s_randomWords(0) %
-            totalParticipants;
+        uint256 winnerId = s_randomWords % totalParticipants;
         transfer(IdToAddress[winnerId], totalSupply);
 
         emit RewardWiner(IdToAddress[winnerId], totalSupply);
@@ -133,9 +180,5 @@ contract Lottery is OwnableUpgradeable {
         }
         _userId.reset();
         delete participants;
-    }
-
-    function fundWithLink(uint256 _amount) external onlyOwner {
-        vrfV2SubscriptionManager.topUpSubscription(_amount);
     }
 }
