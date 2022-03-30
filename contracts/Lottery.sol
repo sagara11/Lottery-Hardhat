@@ -53,16 +53,18 @@ contract Lottery is VRFConsumerBaseV2 {
         uint256 _incentivePoint,
         uint256 _minimumFee,
         uint256 _maxEntries,
-        uint64 subscriptionId,
-        address _vrfCoordinator
+        uint64 _subscriptionId,
+        address _vrfCoordinator,
+        bytes32 _keyhash
     ) VRFConsumerBaseV2(_vrfCoordinator) {
         COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
         LINKTOKEN = LinkTokenInterface(link);
         s_owner = msg.sender;
-        s_subscriptionId = subscriptionId;
+        s_subscriptionId = _subscriptionId;
         incentivePoint = _incentivePoint;
         minimumFee = _minimumFee;
         maxEntries = _maxEntries;
+        keyHash = _keyhash;
     }
 
     function SetFactorLottery(uint256 _amount, LotteryFactor _factor)
