@@ -1,4 +1,6 @@
 require("@nomiclabs/hardhat-waffle");
+require("@nomiclabs/hardhat-ethers");
+require("@nomiclabs/hardhat-etherscan");
 require("@openzeppelin/hardhat-upgrades");
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -25,14 +27,24 @@ module.exports = {
       url: "http://127.0.0.1:8545",
     },
     rinkeby: {
-      url: "wss://rinkeby.infura.io/ws/v3/7723014b031348d686dc1ff75338d63c",
+      url: "https://speedy-nodes-nyc.moralis.io/7b7b771ec8da4cf1d3ef4985/eth/rinkeby",
+      chainId: 4,
+      gasPrice: 20000000000,
       accounts: [
-        "f4e463dd5eb366263e26d9444d25d0b57ddecfacd0c1794a651febc3ea2c313e",
+        "f409697b940a5a46d7ecb8a3db71f4708d7b32975851978bb036b05a676cd3d0",
       ],
     },
   },
+  etherscan: {
+    apiKey: {
+      rinkeby: "2RTSC4A1N2KT8UTNGQBJPX7GD9HS6PBVUH",
+    }
+  },
   solidity: {
     version: "0.8.4",
+    optimizer: {
+      enabled: true,
+    },
   },
   paths: {
     sources: "./contracts",

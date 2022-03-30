@@ -1,15 +1,11 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/LinkTokenInterface.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
-contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
-    using CountersUpgradeable for CountersUpgradeable.Counter;
-    CountersUpgradeable.Counter private _userId;
+contract Lottery is VRFConsumerBaseV2 {
     enum LotteryStatus {
         CLOSED,
         CALCULATING,
@@ -28,66 +24,45 @@ contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
     uint256 public incentivePoint;
     uint256 public minimumFee;
     uint256 public maxEntries;
+    uint256 private _userId;
 
     LotteryStatus private lotteryStatus;
     uint256 public totalSupply;
-    uint256 public totalParticipants;
 
     event RegisterLottery(address _sender, uint256 _amount);
     event RequestRandomness(uint256 _requestId);
     event RewardWiner(address _winner, uint256 _totalReward);
 
-    //Config Chainlink VRFv2SubscriptionManager
+    //Chainlink config
     VRFCoordinatorV2Interface COORDINATOR;
     LinkTokenInterface LINKTOKEN;
-
-    address constant vrfCoordinator =
-        0x6168499c0cFfCaCD319c818142124B7A15E857ab;
-    address constant link_token_contract =
-        0x01BE23585060835E02B77ef475b0Cc51aA1e0709;
-    bytes32 constant keyHash =
+    uint64 s_subscriptionId;
+    address vrfCoordinator = 0x6168499c0cFfCaCD319c818142124B7A15E857ab;
+    address link = 0x01BE23585060835E02B77ef475b0Cc51aA1e0709;
+    bytes32 keyHash =
         0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc;
-    uint32 constant callbackGasLimit = 100000;
-    uint16 constant requestConfirmations = 3;
-    uint32 constant numWords = 1;
+    uint32 callbackGasLimit = 100000;
+    uint16 requestConfirmations = 3;
+    uint32 numWords = 2;
 
-    // Storage parameters
-    uint256 public s_randomWords;
+    uint256[] public s_randomWords;
     uint256 public s_requestId;
-    uint64 public s_subscriptionId;
+    address s_owner;
 
-    function initialize(
+    constructor(
         uint256 _incentivePoint,
         uint256 _minimumFee,
-        uint256 _maxEntries
-    ) public initializer {
-        __Ownable_init();
-        VRFConsumerBaseV2(vrfCoordinator);
+        uint256 _maxEntries,
+        uint64 subscriptionId,
+        address _vrfCoordinator
+    ) VRFConsumerBaseV2(_vrfCoordinator) {
+        COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
+        LINKTOKEN = LinkTokenInterface(link);
+        s_owner = msg.sender;
+        s_subscriptionId = subscriptionId;
         incentivePoint = _incentivePoint;
         minimumFee = _minimumFee;
         maxEntries = _maxEntries;
-        COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
-        LINKTOKEN = LinkTokenInterface(link_token_contract);
-        createNewSubscription();
-    }
-
-    function createNewSubscription() private onlyOwner {
-        // Create a subscription with a new subscription ID.
-        address[] memory consumers = new address[](1);
-        consumers[0] = address(this);
-        s_subscriptionId = COORDINATOR.createSubscription();
-        // Add this contract as a consumer of its own subscription.
-        COORDINATOR.addConsumer(s_subscriptionId, consumers[0]);
-    }
-
-    // Assumes this contract owns link.
-    // 1000000000000000000 = 1 LINK
-    function topUpSubscription(uint256 amount) external {
-        LINKTOKEN.transferAndCall(
-            address(COORDINATOR),
-            amount,
-            abi.encode(s_subscriptionId)
-        );
     }
 
     function SetFactorLottery(uint256 _amount, LotteryFactor _factor)
@@ -111,19 +86,20 @@ contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
     }
 
     function FundLottery() external payable {
-        require(totalParticipants <= maxEntries, "The lottery has been full");
+        require(participants.length <= maxEntries, "The lottery has been full");
         require(msg.value >= minimumFee, "Not enought fee to join lottery");
         require(
             lotteryStatus == LotteryStatus.STARTED,
             "The lottert hasn't been started"
         );
 
-        balanceOf[_msgSender()] += msg.value;
-        IdToAddress[_userId.current()] = _msgSender();
-        participants.push(_msgSender());
-        _userId.increment();
+        balanceOf[msg.sender] += msg.value;
+        totalSupply += msg.value;
+        IdToAddress[_userId] = msg.sender;
+        participants.push(msg.sender);
+        _userId += 1;
 
-        emit RegisterLottery(_msgSender(), msg.value);
+        emit RegisterLottery(msg.sender, msg.value);
     }
 
     function startLottery() external onlyOwner returns (bool) {
@@ -150,8 +126,8 @@ contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
 
     function fulfillRandomWords(
         uint256, /* requestId */
-        uint256 randomWords
-    ) internal {
+        uint256[] memory randomWords
+    ) internal override {
         s_randomWords = randomWords;
     }
 
@@ -161,9 +137,9 @@ contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
     }
 
     function endLottery() external onlyOwner {
-        require(s_randomWords > 0, "The lottery is processing");
+        require(s_randomWords[0] > 0, "The lottery is processing");
 
-        uint256 winnerId = s_randomWords % totalParticipants;
+        uint256 winnerId = s_randomWords[0] % participants.length;
         transfer(IdToAddress[winnerId], totalSupply);
 
         emit RewardWiner(IdToAddress[winnerId], totalSupply);
@@ -178,7 +154,12 @@ contract Lottery is VRFConsumerBaseV2, OwnableUpgradeable {
             balanceOf[participants[i]] = 0;
             IdToAddress[i] = address(0);
         }
-        _userId.reset();
+        _userId = 0;
         delete participants;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == s_owner);
+        _;
     }
 }
