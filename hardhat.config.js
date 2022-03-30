@@ -3,6 +3,8 @@ require("@nomiclabs/hardhat-ethers");
 require("@nomiclabs/hardhat-etherscan");
 require("@openzeppelin/hardhat-upgrades");
 
+require("dotenv").config();
+
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
 task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
@@ -25,20 +27,23 @@ module.exports = {
     hardhat: {},
     develop: {
       url: "http://127.0.0.1:8545",
+      chainId: 1337,
     },
     rinkeby: {
-      url: "https://speedy-nodes-nyc.moralis.io/7b7b771ec8da4cf1d3ef4985/eth/rinkeby",
+      url: process.env.RINKEBY_URL || "",
       chainId: 4,
       gasPrice: 20000000000,
       accounts: [
-        "f409697b940a5a46d7ecb8a3db71f4708d7b32975851978bb036b05a676cd3d0",
+        process.env.PRIVATE_KEY_DEPLOYER,
+        process.env.PRIVATE_KEY_USER_2,
+        process.env.PRIVATE_KEY_USER_3,
       ],
     },
   },
   etherscan: {
     apiKey: {
-      rinkeby: "2RTSC4A1N2KT8UTNGQBJPX7GD9HS6PBVUH",
-    }
+      rinkeby: process.env.ETHERSCAN_API_KEY_RINKEBY,
+    },
   },
   solidity: {
     version: "0.8.4",
@@ -54,5 +59,19 @@ module.exports = {
   },
   mocha: {
     timeout: 40000,
+  },
+  namedAccounts: {
+    deployer: {
+      default: 0,
+      4: 0,
+    },
+    user2: {
+      default: 1,
+      4: 1,
+    },
+    user3: {
+      default: 2,
+      4: 2,
+    },
   },
 };
