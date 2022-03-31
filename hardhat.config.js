@@ -27,7 +27,7 @@ module.exports = {
     hardhat: {},
     develop: {
       url: "http://127.0.0.1:8545",
-      chainId: 1337,
+      chainId: 31337,
     },
     rinkeby: {
       url: process.env.RINKEBY_URL || "",
@@ -59,19 +59,5 @@ module.exports = {
   },
   mocha: {
     timeout: 40000,
-  },
-  namedAccounts: {
-    deployer: {
-      default: 0,
-      4: 0,
-    },
-    user2: {
-      default: 1,
-      4: 1,
-    },
-    user3: {
-      default: 2,
-      4: 2,
-    },
   },
 };
