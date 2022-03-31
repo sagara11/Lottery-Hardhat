@@ -4,6 +4,17 @@ pragma solidity ^0.8.0;
 import "@chainlink/contracts/src/v0.8/interfaces/LinkTokenInterface.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+error Unauthorized();
+error InvalidAmount();
+error LotteryFullSlot();
+error NotEnoughFeeToJoin();
+error LotteryNotStarted();
+error RewardFailed();
+error RequestIsProccessing();
+error LotteryNotClosed();
+error InvalidBalance();
 
 contract Lottery is VRFConsumerBaseV2 {
     enum LotteryStatus {
@@ -24,26 +35,27 @@ contract Lottery is VRFConsumerBaseV2 {
     uint256 public incentivePoint;
     uint256 public minimumFee;
     uint256 public maxEntries;
-    uint256 private _userId;
+    using Counters for Counters.Counter;
+    Counters.Counter private _userId;
 
     LotteryStatus private lotteryStatus;
     uint256 public totalSupply;
 
     event RegisterLottery(address _sender, uint256 _amount);
     event RequestRandomness(uint256 _requestId);
-    event RewardWiner(address _winner, uint256 _totalReward);
+    event RewardWinner(address _winner, uint256 _totalReward);
+    event Transfer(address _to, uint256 _amount);
 
     //Chainlink config
     VRFCoordinatorV2Interface COORDINATOR;
     LinkTokenInterface LINKTOKEN;
+    uint32 constant callbackGasLimit = 100000;
+    uint16 constant requestConfirmations = 3;
+    uint32 constant numWords = 2;
     uint64 s_subscriptionId;
-    address vrfCoordinator = 0x6168499c0cFfCaCD319c818142124B7A15E857ab;
-    address link = 0x01BE23585060835E02B77ef475b0Cc51aA1e0709;
-    bytes32 keyHash =
-        0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc;
-    uint32 callbackGasLimit = 100000;
-    uint16 requestConfirmations = 3;
-    uint32 numWords = 2;
+    address vrfCoordinator;
+    address link;
+    bytes32 keyHash;
 
     uint256[] public s_randomWords;
     uint256 public s_requestId;
@@ -72,7 +84,7 @@ contract Lottery is VRFConsumerBaseV2 {
         onlyOwner
         returns (bool)
     {
-        require(_amount > 0, "Invalid valid amount");
+        if (_amount <= 0) revert InvalidAmount();
 
         if (_factor == LotteryFactor.INCENTIVE_POINT) {
             incentivePoint = _amount;
@@ -88,18 +100,15 @@ contract Lottery is VRFConsumerBaseV2 {
     }
 
     function FundLottery() external payable {
-        require(participants.length <= maxEntries, "The lottery has been full");
-        require(msg.value >= minimumFee, "Not enought fee to join lottery");
-        require(
-            lotteryStatus == LotteryStatus.STARTED,
-            "The lottert hasn't been started"
-        );
+        if (participants.length > maxEntries) revert LotteryFullSlot();
+        if (msg.value < minimumFee) revert NotEnoughFeeToJoin();
+        if (lotteryStatus != LotteryStatus.STARTED) revert LotteryNotStarted();
 
         balanceOf[msg.sender] += msg.value;
         totalSupply += msg.value;
-        IdToAddress[_userId] = msg.sender;
+        IdToAddress[_userId.current()] = msg.sender;
         participants.push(msg.sender);
-        _userId += 1;
+        _userId.increment();
 
         emit RegisterLottery(msg.sender, msg.value);
     }
@@ -110,10 +119,7 @@ contract Lottery is VRFConsumerBaseV2 {
     }
 
     function requestRandomness() external onlyOwner {
-        require(
-            lotteryStatus == LotteryStatus.STARTED,
-            "The lottert hasn't been started"
-        );
+        if (lotteryStatus != LotteryStatus.STARTED) revert LotteryNotStarted();
 
         lotteryStatus = LotteryStatus.CALCULATING;
         s_requestId = COORDINATOR.requestRandomWords(
@@ -133,35 +139,40 @@ contract Lottery is VRFConsumerBaseV2 {
         s_randomWords = randomWords;
     }
 
-    function transfer(address _to, uint256 _amount) internal {
+    function transfer(address payable _to, uint256 _amount) internal {
+        if (balanceOf[_to] <= 0) revert InvalidBalance();
+        if (balanceOf[_to] > _amount) revert InvalidBalance();
+
+        balanceOf[_to] = 0;
+        balanceOf[_to] += _amount;
         (bool sent, ) = _to.call{value: _amount}("");
-        require(sent, "Failed to reward price");
+        if (!sent) revert RewardFailed();
+
+        emit Transfer(_to, _amount);
     }
 
     function endLottery() external onlyOwner {
-        require(s_randomWords[0] > 0, "The lottery is processing");
+        if (s_randomWords[0] < 0) revert RequestIsProccessing();
 
         uint256 winnerId = s_randomWords[0] % participants.length;
-        transfer(IdToAddress[winnerId], totalSupply);
-
-        emit RewardWiner(IdToAddress[winnerId], totalSupply);
-
-        resetLottery();
+        transfer(payable(IdToAddress[winnerId]), totalSupply);
         lotteryStatus = LotteryStatus.CLOSED;
+        emit RewardWinner(IdToAddress[winnerId], totalSupply);
     }
 
-    function resetLottery() internal onlyOwner {
-        totalSupply = 0;
+    function resetLottery() external onlyOwner {
+        if (lotteryStatus != LotteryStatus.CLOSED) revert LotteryNotClosed();
+
         for (uint256 i = 0; i < participants.length; i++) {
             balanceOf[participants[i]] = 0;
             IdToAddress[i] = address(0);
         }
-        _userId = 0;
+        _userId.reset();
         delete participants;
     }
 
     modifier onlyOwner() {
-        require(msg.sender == s_owner);
+        if (msg.sender != s_owner) revert Unauthorized();
         _;
     }
 }
