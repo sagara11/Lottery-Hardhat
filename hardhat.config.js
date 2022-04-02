@@ -32,11 +32,13 @@ module.exports = {
     rinkeby: {
       url: process.env.RINKEBY_URL || "",
       chainId: 4,
-      gasPrice: 20000000000,
+      gas: 2100000,
+      gasPrice: 8000000000,
       accounts: [
         process.env.PRIVATE_KEY_DEPLOYER,
         process.env.PRIVATE_KEY_USER_2,
         process.env.PRIVATE_KEY_USER_3,
+        process.env.PRIVATE_KEY_USER_4,
       ],
     },
   },

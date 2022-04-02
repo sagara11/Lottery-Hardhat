@@ -66,11 +66,11 @@ const deployMock = async () => {
   );
 
   // createSubscription
-  const subIdCurrent = await createSubscription(vrfCoordinatorV2Mock);
+  const subId = await createSubscription(vrfCoordinatorV2Mock);
   // fundSubscription
-  await fundSubscription(vrfCoordinatorV2Mock, subIdCurrent);
+  await fundSubscription(vrfCoordinatorV2Mock, subId);
 
-  return { vrfCoordinatorV2Mock, subIdCurrent };
+  return { vrfCoordinatorV2Mock, subId };
 };
 
 module.exports = {

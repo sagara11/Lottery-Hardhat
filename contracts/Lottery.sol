@@ -171,6 +171,11 @@ contract Lottery is VRFConsumerBaseV2 {
         delete participants;
     }
 
+    function addConsumer(address consumerAddress) external onlyOwner {
+        // Add a consumer contract to the subscription.
+        COORDINATOR.addConsumer(s_subscriptionId, consumerAddress);
+    }
+
     modifier onlyOwner() {
         if (msg.sender != s_owner) revert Unauthorized();
         _;
