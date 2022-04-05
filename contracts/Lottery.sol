@@ -5,6 +5,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/LinkTokenInterface.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 error Unauthorized();
 error InvalidAmount();
@@ -29,14 +30,15 @@ contract Lottery is VRFConsumerBaseV2 {
         MAX_ENTRIES
     }
 
+    using EnumerableMap for EnumerableMap.UintToAddressMap;
+    using Counters for Counters.Counter;
+    EnumerableMap.UintToAddressMap private IdToAddress;
+    Counters.Counter private _userId;
+
     mapping(address => uint256) public balanceOf;
-    mapping(uint256 => address) public IdToAddress;
-    address[] public participants;
     uint256 public incentivePoint;
     uint256 public minimumFee;
     uint256 public maxEntries;
-    using Counters for Counters.Counter;
-    Counters.Counter private _userId;
 
     LotteryStatus private lotteryStatus;
     uint256 public totalSupply;
@@ -100,14 +102,13 @@ contract Lottery is VRFConsumerBaseV2 {
     }
 
     function FundLottery() external payable {
-        if (participants.length > maxEntries) revert LotteryFullSlot();
+        if (IdToAddress.length() > maxEntries) revert LotteryFullSlot();
         if (msg.value < minimumFee) revert NotEnoughFeeToJoin();
         if (lotteryStatus != LotteryStatus.STARTED) revert LotteryNotStarted();
 
         balanceOf[msg.sender] += msg.value;
         totalSupply += msg.value;
-        IdToAddress[_userId.current()] = msg.sender;
-        participants.push(msg.sender);
+        IdToAddress.set(_userId.current(), msg.sender);
         _userId.increment();
 
         emit RegisterLottery(msg.sender, msg.value);
@@ -154,21 +155,20 @@ contract Lottery is VRFConsumerBaseV2 {
     function endLottery() external onlyOwner {
         if (s_randomWords[0] < 0) revert RequestIsProccessing();
 
-        uint256 winnerId = s_randomWords[0] % participants.length;
-        transfer(payable(IdToAddress[winnerId]), totalSupply);
+        uint256 winnerId = s_randomWords[0] % IdToAddress.length();
+        transfer(payable(IdToAddress.get(winnerId)), totalSupply);
         lotteryStatus = LotteryStatus.CLOSED;
-        emit RewardWinner(IdToAddress[winnerId], totalSupply);
+        emit RewardWinner(IdToAddress.get(winnerId), totalSupply);
     }
 
     function resetLottery() external onlyOwner {
         if (lotteryStatus != LotteryStatus.CLOSED) revert LotteryNotClosed();
 
-        for (uint256 i = 0; i < participants.length; i++) {
-            balanceOf[participants[i]] = 0;
-            IdToAddress[i] = address(0);
+        for (uint256 i = 0; i < IdToAddress.length(); i++) {
+            balanceOf[IdToAddress.get(i)] = 0;
+            IdToAddress.remove(i);
         }
         _userId.reset();
-        delete participants;
     }
 
     function addConsumer(address consumerAddress) external onlyOwner {
